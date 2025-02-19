@@ -3,6 +3,9 @@
 Updated RAG System with Latest LangChain/HuggingFace Syntax
 """
 
+import warnings
+warnings.filterwarnings("ignore", message=".*'post'.*")
+
 # Install required packages
 # pip install langchain faiss-cpu sentence-transformers wikipedia huggingface_hub
 # pip install -U langchain-community langchain-huggingface
@@ -42,13 +45,7 @@ def main():
     retriever = vector_store.as_retriever(search_kwargs={"k": 3})
     
     # 6. LLM Setup with updated configuration
-
     class DebugHuggingFaceEndpoint(HuggingFaceEndpoint):
-        # def _call(self, prompt, stop=None, **kwargs):
-        #     print("\nDebug _call: Prompt being sent to HuggingFace LLM:")
-        #     print(prompt)
-        #     return super()._call(prompt, stop, **kwargs)
-        
         def generate(self, prompt, stop=None, **kwargs):
             print("\nDebug generate: Prompt being sent to HuggingFace LLM:")
             print(prompt)
@@ -60,13 +57,6 @@ def main():
         temperature=0.7,
         max_new_tokens=256  # Updated parameter name
     )
-    # print("Initializing language model...")
-    # llm = HuggingFaceEndpoint(
-    #     repo_id="google/flan-t5-xxl",
-    #     task="text-generation",  # Explicit task definition
-    #     temperature=0.7,
-    #     max_new_tokens=256  # Updated parameter name
-    # )
     
     # 7. RAG Pipeline with invoke() pattern
     qa_chain = RetrievalQA.from_chain_type(
@@ -81,14 +71,8 @@ def main():
         query = input("\nYour question: ")
         if query.lower() == 'exit':
             break
-            
-        # 9. Use invoke() instead of __call__
         result = qa_chain.invoke({"query": query})
-            
-        # 10. Display Results
         print(f"\nAnswer: {result['result']}")
-
-
 
 if __name__ == "__main__":
     main()
