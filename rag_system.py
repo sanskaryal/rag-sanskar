@@ -42,13 +42,12 @@ def main():
     retriever = vector_store.as_retriever(search_kwargs={"k": 3})
     
     # 6. LLM Setup with updated configuration
-    from langchain_huggingface import HuggingFaceEndpoint
 
     class DebugHuggingFaceEndpoint(HuggingFaceEndpoint):
-        def _call(self, prompt, stop=None, **kwargs):
-            print("\nDebug _call: Prompt being sent to HuggingFace LLM:")
-            print(prompt)
-            return super()._call(prompt, stop, **kwargs)
+        # def _call(self, prompt, stop=None, **kwargs):
+        #     print("\nDebug _call: Prompt being sent to HuggingFace LLM:")
+        #     print(prompt)
+        #     return super()._call(prompt, stop, **kwargs)
         
         def generate(self, prompt, stop=None, **kwargs):
             print("\nDebug generate: Prompt being sent to HuggingFace LLM:")
