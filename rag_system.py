@@ -42,20 +42,38 @@ def main():
     retriever = vector_store.as_retriever(search_kwargs={"k": 3})
     
     # 6. LLM Setup with updated configuration
-    print("Initializing language model...")
-    llm = HuggingFaceEndpoint(
+    from langchain_huggingface import HuggingFaceEndpoint
+
+    class DebugHuggingFaceEndpoint(HuggingFaceEndpoint):
+        def _call(self, prompt, stop=None, **kwargs):
+            print("\nDebug _call: Prompt being sent to HuggingFace LLM:")
+            print(prompt)
+            return super()._call(prompt, stop, **kwargs)
+        
+        def generate(self, prompt, stop=None, **kwargs):
+            print("\nDebug generate: Prompt being sent to HuggingFace LLM:")
+            print(prompt)
+            return super().generate(prompt, stop, **kwargs)
+
+    llm = DebugHuggingFaceEndpoint(
         repo_id="google/flan-t5-xxl",
         task="text-generation",  # Explicit task definition
         temperature=0.7,
         max_new_tokens=256  # Updated parameter name
     )
+    # print("Initializing language model...")
+    # llm = HuggingFaceEndpoint(
+    #     repo_id="google/flan-t5-xxl",
+    #     task="text-generation",  # Explicit task definition
+    #     temperature=0.7,
+    #     max_new_tokens=256  # Updated parameter name
+    # )
     
     # 7. RAG Pipeline with invoke() pattern
     qa_chain = RetrievalQA.from_chain_type(
         llm=llm,
         chain_type="stuff",
-        retriever=retriever,
-        return_source_documents=True
+        retriever=retriever
     )
     
     # 8. Updated interactive query system
@@ -70,9 +88,8 @@ def main():
             
         # 10. Display Results
         print(f"\nAnswer: {result['result']}")
-        print("\nSources:")
-        for doc in result['source_documents']:
-            print(f"- {doc.metadata['title']} (Page {doc.metadata.get('page', 'N/A')})")
+
+
 
 if __name__ == "__main__":
     main()
