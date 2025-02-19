@@ -1,78 +1,72 @@
-# -*- coding: utf-8 -*-
-"""
-Updated RAG System with Latest LangChain/HuggingFace Syntax
-"""
+import os
+import faiss
+import numpy as np
+import wikipedia
+from sentence_transformers import SentenceTransformer
+from google import genai
+import re
 
-import warnings
-warnings.filterwarnings("ignore", message=".*'post'.*")
-
-# Install required packages
-# pip install langchain faiss-cpu sentence-transformers wikipedia huggingface_hub
-# pip install -U langchain-community langchain-huggingface
-
-from langchain_community.document_loaders import WikipediaLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_huggingface import HuggingFaceEmbeddings
-
-from langchain_community.vectorstores import FAISS
-from langchain.chains import RetrievalQA
-from langchain_huggingface import HuggingFaceEndpoint  # Updated import
+def chunk_text(text, chunk_size=1000, overlap=200):
+    """Basic text chunking with overlap"""
+    chunks = []
+    start = 0
+    while start < len(text):
+        end = start + chunk_size
+        chunks.append(text[start:end])
+        start = end - overlap
+    return chunks
 
 def main():
-    # 1. Data Preparation - Load documents from Wikipedia
+    # 1. Data Preparation
     print("Loading documents...")
-    loader = WikipediaLoader(query="Liam Payne", load_max_docs=1)
-    documents = loader.load()
+    wikipedia.set_lang("en")
+    page = wikipedia.page("Liam Payne", auto_suggest=False)
+    text = page.content
     
-    # 2. Document Processing - Split into chunks
+    # 2. Document Processing
     print("Processing documents...")
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=200
-    )
-    chunks = text_splitter.split_documents(documents)
+    clean_text = re.sub('\s+', ' ', text).strip()
+    chunks = chunk_text(clean_text, chunk_size=1000, overlap=200)
     
     # 3. Embedding Setup
     print("Creating embeddings...")
-    embeddings = HuggingFaceEmbeddings(
-        model_name="sentence-transformers/all-MiniLM-L6-v2"
-    )
+    model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
+    chunk_embeddings = model.encode(chunks, convert_to_tensor=True).cpu().numpy()
     
-    # 4. Vector Store
-    vector_store = FAISS.from_documents(chunks, embeddings)
+    # 4. Create FAISS Index
+    dimension = chunk_embeddings.shape[1]
+    index = faiss.IndexFlatL2(dimension)
+    index.add(chunk_embeddings)
     
-    # 5. Retriever Setup
-    retriever = vector_store.as_retriever(search_kwargs={"k": 3})
+    # 5. Gemini Setup
+    client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
     
-    # 6. LLM Setup with updated configuration
-    class DebugHuggingFaceEndpoint(HuggingFaceEndpoint):
-        def generate(self, prompt, stop=None, **kwargs):
-            print("\nDebug generate: Prompt being sent to HuggingFace LLM:")
-            print(prompt)
-            return super().generate(prompt, stop, **kwargs)
-
-    llm = DebugHuggingFaceEndpoint(
-        repo_id="google/flan-t5-xxl",
-        task="text-generation",  # Explicit task definition
-        temperature=0.7,
-        max_new_tokens=256  # Updated parameter name
-    )
-    
-    # 7. RAG Pipeline with invoke() pattern
-    qa_chain = RetrievalQA.from_chain_type(
-        llm=llm,
-        chain_type="stuff",
-        retriever=retriever
-    )
-    
-    # 8. Updated interactive query system
     print("\nRAG System Ready! Type 'exit' to quit.")
     while True:
         query = input("\nYour question: ")
         if query.lower() == 'exit':
             break
-        result = qa_chain.invoke({"query": query})
-        print(f"\nAnswer: {result['result']}")
+        
+        # Retrieve relevant chunks
+        query_embedding = model.encode([query], convert_to_tensor=True).cpu().numpy()
+        indices = index.search(query_embedding, k=3)
+        
+        # Build context
+        context = "\n\n".join([chunks[i] for i in indices[0]])
+        
+        # Generate response
+        prompt = f"""Answer based on this context:
+        {context}
+        
+        Question: {query}
+        Answer:"""
+        
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=prompt
+        )
+        
+        print(f"\nAnswer: {response.text}")
 
 if __name__ == "__main__":
     main()
